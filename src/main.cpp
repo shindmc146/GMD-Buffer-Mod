@@ -16,9 +16,9 @@
 using namespace geode::prelude;
 
 // ---- settings --------------------------------------------------------
-static constexpr char const* STAGE_NAMES[] = {"2 ticks", "4 ticks", "8 ticks", "16 ticks", "Off"};
-static constexpr int STAGES[] = {2, 4, 8, 16, 0};
-static constexpr int STAGE_COUNT = 5;
+static constexpr char const* STAGE_NAMES[] = {"2 ticks", "4 ticks", "8 ticks", "16 ticks", "32 ticks", "Off"};
+static constexpr int STAGES[] = {2, 4, 8, 16, 32, 0};
+static constexpr int STAGE_COUNT = 6;
 static int g_stage = 1;
 
 static constexpr int WAVE_MAX_TICKS = 8;
@@ -41,11 +41,19 @@ enum WaveMode { WAVE_HOLD = 0, WAVE_GAP = 1, WAVE_GRID = 2 };
 static constexpr int WAVE_MODE_COUNT = 3;
 static int g_waveMode = WAVE_GRID;
 
-static constexpr char const* TPS_NAMES[] = {"60", "120", "240", "360", "480", "720", "960", "1000"};
-static constexpr int TPS_PRESETS[] = {60, 120, 240, 360, 480, 720, 960, 1000};
-static constexpr int TPS_COUNT = 8;
-static int g_tpsIndex = 2;
+// Index 0 is "Auto": the TPS is read from the game's own physics step.
+static constexpr char const* TPS_NAMES[] = {"Auto", "60", "120", "240", "360", "480", "720", "960", "1000"};
+static constexpr int TPS_PRESETS[] = {0, 60, 120, 240, 360, 480, 720, 960, 1000};
+static constexpr int TPS_COUNT = 9;
+static int g_tpsIndex = 0;
+static int g_detectedTps = 240;
 
+// Late orb rescue: a click this many ticks after leaving an unused orb
+// still fires that orb. 0 = off.
+static int g_lateOrbTicks = 4;
+
+static bool g_practiceOnly = true;
+static bool g_showOverlay = true;
 static bool g_debug = false;
 
 // Hotkeys. Order: 0 stage, 1 tps up, 2 tps down, 3 debug, 4 wave mode.
@@ -84,7 +92,7 @@ static int vkFromName(std::string const& n) {
 static void loadSettings() {
     auto m = Mod::get();
     g_stage = indexOf(STAGE_NAMES, STAGE_COUNT, m->getSettingValue<std::string>("stage"), 1);
-    g_tpsIndex = indexOf(TPS_NAMES, TPS_COUNT, m->getSettingValue<std::string>("tps"), 2);
+    g_tpsIndex = indexOf(TPS_NAMES, TPS_COUNT, m->getSettingValue<std::string>("tps"), 0);
     g_waveMode = indexOf(WAVE_NAMES, WAVE_MODE_COUNT, m->getSettingValue<std::string>("wave-mode"), WAVE_GRID);
     for (int i = 0; i < MODE_COUNT; i++) {
         g_modeTicks[i] = static_cast<int>(m->getSettingValue<int64_t>(MODE_KEYS[i]));
@@ -92,17 +100,53 @@ static void loadSettings() {
     for (int i = 0; i < KEY_COUNT; i++) {
         g_keyVK[i] = vkFromName(m->getSettingValue<std::string>(KEY_SETTINGS[i]));
     }
+    g_lateOrbTicks = static_cast<int>(m->getSettingValue<int64_t>("late-orb-ticks"));
+    g_practiceOnly = m->getSettingValue<bool>("practice-only");
+    g_showOverlay = m->getSettingValue<bool>("show-overlay");
     g_debug = m->getSettingValue<bool>("debug");
 }
 
 static char const* waveModeName() { return WAVE_NAMES[g_waveMode]; }
 
+static int currentTps() {
+    return g_tpsIndex == 0 ? g_detectedTps : TPS_PRESETS[g_tpsIndex];
+}
+
 static float stepsPerTick() {
-    return TPS_PRESETS[g_tpsIndex] / 240.0f;
+    return currentTps() / 240.0f;
+}
+
+static int ticksToSteps(int ticks) {
+    if (ticks <= 0) return 0;
+    return std::max(1, static_cast<int>(std::lround(ticks * stepsPerTick())));
 }
 
 static int mainLimitSteps() {
     return static_cast<int>(std::lround(STAGES[g_stage] * stepsPerTick()));
+}
+
+// Reads the TPS from the per-step delta the game hands to processCommands.
+// GD passes it either in seconds or in 1/60 s units depending on the path,
+// so both are accepted. A new value is only taken after it has been the
+// same for 30 steps in a row, so one odd step does not change anything.
+static void observeStepDt(float dt) {
+    if (!(dt > 0.f)) return;
+    float tps = dt < 0.025f ? 1.0f / dt : 60.0f / dt;
+    if (tps < 30.f || tps > 2400.f) return;
+    int rounded = static_cast<int>(std::lround(tps));
+
+    static int candidate = 0;
+    static int streak = 0;
+    if (rounded == candidate) {
+        streak++;
+    } else {
+        candidate = rounded;
+        streak = 1;
+    }
+    if (streak >= 30 && candidate != g_detectedTps) {
+        DBG("[InputBuffer] Auto TPS {} -> {} (dt {})", g_detectedTps, candidate, dt);
+        g_detectedTps = candidate;
+    }
 }
 
 static bool isFlyMode(PlayerObject* p) {
@@ -135,23 +179,28 @@ static int ticksForMode(int idx) {
 }
 
 static int modeLimitSteps(PlayerObject* p) {
-    int ticks = ticksForMode(modeIndex(p));
-    if (ticks <= 0) return 0;
-    return std::max(1, static_cast<int>(std::lround(ticks * stepsPerTick())));
+    return ticksToSteps(ticksForMode(modeIndex(p)));
 }
 
 static int waveGridSteps() {
-    int ticks = ticksForMode(MODE_WAVE);
-    if (ticks <= 0) return 0;
-    return std::max(1, static_cast<int>(std::lround(ticks * stepsPerTick())));
+    return ticksToSteps(ticksForMode(MODE_WAVE));
 }
 
 static int spawnGraceSteps() {
-    return std::max(1, static_cast<int>(std::lround(SPAWN_GRACE_TICKS * stepsPerTick())));
+    return ticksToSteps(SPAWN_GRACE_TICKS);
+}
+
+static int lateOrbSteps() {
+    return ticksToSteps(g_lateOrbTicks);
 }
 
 static int ringsTouching(PlayerObject* p) {
     return p->m_touchingRings ? static_cast<int>(p->m_touchingRings->count()) : 0;
+}
+
+static RingObject* firstRing(PlayerObject* p) {
+    if (ringsTouching(p) == 0) return nullptr;
+    return typeinfo_cast<RingObject*>(p->m_touchingRings->objectAtIndex(0));
 }
 
 static char const* modeName(PlayerObject* p) {
@@ -165,6 +214,11 @@ static char const* modeName(PlayerObject* p) {
     return "cube";
 }
 
+static std::string tpsLabel() {
+    if (g_tpsIndex == 0) return fmt::format("{} auto", g_detectedTps);
+    return TPS_NAMES[g_tpsIndex];
+}
+
 static void doHotkey(int action) {
     auto m = Mod::get();
     switch (action) {
@@ -172,17 +226,17 @@ static void doHotkey(int action) {
             g_stage = (g_stage + 1) % STAGE_COUNT;
             m->setSettingValue<std::string>("stage", STAGE_NAMES[g_stage]);
             log::info("[InputBuffer] Main window -> {} ({} steps, wave {} steps @ {} TPS)",
-                      STAGE_NAMES[g_stage], mainLimitSteps(), waveGridSteps(), TPS_PRESETS[g_tpsIndex]);
+                      STAGE_NAMES[g_stage], mainLimitSteps(), waveGridSteps(), currentTps());
             break;
         case 1:
             g_tpsIndex = std::min(g_tpsIndex + 1, TPS_COUNT - 1);
             m->setSettingValue<std::string>("tps", TPS_NAMES[g_tpsIndex]);
-            log::info("[InputBuffer] TPS -> {} ({:.2f} steps/tick)", TPS_PRESETS[g_tpsIndex], stepsPerTick());
+            log::info("[InputBuffer] TPS -> {} ({:.2f} steps/tick)", tpsLabel(), stepsPerTick());
             break;
         case 2:
             g_tpsIndex = std::max(g_tpsIndex - 1, 0);
             m->setSettingValue<std::string>("tps", TPS_NAMES[g_tpsIndex]);
-            log::info("[InputBuffer] TPS -> {} ({:.2f} steps/tick)", TPS_PRESETS[g_tpsIndex], stepsPerTick());
+            log::info("[InputBuffer] TPS -> {} ({:.2f} steps/tick)", tpsLabel(), stepsPerTick());
             break;
         case 3:
             g_debug = !g_debug;
@@ -197,12 +251,25 @@ static void doHotkey(int action) {
     }
 }
 
+#ifdef GEODE_IS_WINDOWS
+// True only when the focused window belongs to Geometry Dash, so hotkeys
+// pressed in Discord, OBS, a browser and so on are ignored.
+static bool gameHasFocus() {
+    HWND fg = GetForegroundWindow();
+    if (!fg) return false;
+    DWORD pid = 0;
+    GetWindowThreadProcessId(fg, &pid);
+    return pid == GetCurrentProcessId();
+}
+#endif
+
 static void pollKeys() {
 #ifdef GEODE_IS_WINDOWS
     static bool prev[KEY_COUNT] = {false, false, false, false, false};
+    bool focused = gameHasFocus();
     bool now[KEY_COUNT];
     for (int i = 0; i < KEY_COUNT; i++) {
-        now[i] = g_keyVK[i] != 0 && (GetAsyncKeyState(g_keyVK[i]) & 0x8000) != 0;
+        now[i] = focused && g_keyVK[i] != 0 && (GetAsyncKeyState(g_keyVK[i]) & 0x8000) != 0;
     }
     for (int i = 0; i < KEY_COUNT; i++) {
         if (now[i] && !prev[i]) doHotkey(i);
@@ -222,10 +289,13 @@ $on_mod(Loaded) {
     for (auto key : KEY_SETTINGS) {
         listenForSettingChanges<std::string>(key, [](std::string) { loadSettings(); });
     }
+    listenForSettingChanges<int64_t>("late-orb-ticks", [](int64_t) { loadSettings(); });
+    listenForSettingChanges<bool>("practice-only", [](bool) { loadSettings(); });
+    listenForSettingChanges<bool>("show-overlay", [](bool) { loadSettings(); });
     listenForSettingChanges<bool>("debug", [](bool) { loadSettings(); });
 
-    log::info("[InputBuffer] BufferMod loaded (v19: wave tap + spawn fix). Main: {}, TPS: {}, wave: {}",
-              STAGE_NAMES[g_stage], TPS_PRESETS[g_tpsIndex], waveModeName());
+    log::info("[InputBuffer] BufferMod loaded (v1.1.0). Main: {}, TPS: {}, wave: {}, late orb: {} ticks, practice only: {}",
+              STAGE_NAMES[g_stage], tpsLabel(), waveModeName(), g_lateOrbTicks, g_practiceOnly);
 }
 
 class $modify(BufferPause, PauseLayer) {
@@ -285,6 +355,13 @@ struct PState {
 
     std::vector<std::pair<bool, int>> waveQueue;
     int lastReleaseStep = -1000000;
+
+    // Late orb rescue.
+    Ref<RingObject> lastRing;   // last orb the icon overlapped
+    bool touchingRing = false;  // overlapping an orb right now
+    int ringLeftStep = -1;      // step the icon stopped overlapping it
+    Ref<RingObject> usedRing;   // last orb a click (or hold) was spent on
+    Ref<RingObject> lateRing;   // orb to fire on the next step
 };
 
 class $modify(BufferLayer, GJBaseGameLayer) {
@@ -293,12 +370,37 @@ class $modify(BufferLayer, GJBaseGameLayer) {
         int epoch = 0;
         int graceUntil = 0;
         PState ps[2];
+
+        // Counters for the overlay. "Attempt" ones reset on death/restart.
+        int savedEarly = 0;
+        int savedLate = 0;
+        int adjusted = 0;
+        int totalSaved = 0;
+
+        CCLabelBMFont* label = nullptr;
+        std::string labelText;
+        int flashUntil = 0;
+        ccColor3B flashColor = {255, 255, 255};
     };
 
     // True in a one-player level with a dual portal: a single click is sent
     // as player 1 and the game applies it to both icons.
     bool sharedDualInput() {
         return m_gameState.m_isDualMode && m_levelSettings && !m_levelSettings->m_twoPlayerMode;
+    }
+
+    // The buffer only runs in a real level, and with "Practice Mode Only"
+    // turned on, only while practice mode is on.
+    bool assistActive() {
+        if (!PlayLayer::get()) return false;
+        if (g_practiceOnly && !m_isPracticeMode) return false;
+        return true;
+    }
+
+    void flash(ccColor3B color) {
+        auto f = m_fields.operator->();
+        f->flashColor = color;
+        f->flashUntil = f->step + ticksToSteps(48);
     }
 
     // Press or release for the icon at idx. In shared dual input, player 1's
@@ -329,6 +431,10 @@ class $modify(BufferLayer, GJBaseGameLayer) {
             s = PState();
         }
 
+        f->savedEarly = 0;
+        f->savedLate = 0;
+        f->adjusted = 0;
+
         // Wave Grid / Min Gap are skipped briefly after a spawn so the first
         // clicks go straight through.
         f->graceUntil = f->step + spawnGraceSteps();
@@ -343,6 +449,22 @@ class $modify(BufferLayer, GJBaseGameLayer) {
             f->graceUntil, inconsistent ? ", released stuck button" : "");
     }
 
+    // Used when the buffer switches off mid-level (practice mode turned off):
+    // sends anything still held back so no input is lost, then clears state.
+    void drainAll() {
+        auto f = m_fields.operator->();
+        for (int i = 0; i < 2; i++) {
+            auto& s = f->ps[i];
+            auto p = i == 0 ? m_player1 : m_player2;
+            if (p) {
+                if (!s.waveQueue.empty()) flushWaveQueue(p, s, i);
+                if (s.delayedRelease) sendInput(p, i, false, false);
+                if (s.releaseNext && !s.held) sendInput(p, i, false, true);
+            }
+            s = PState();
+        }
+    }
+
     void flushWaveQueue(PlayerObject* p, PState& s, int idx) {
         for (auto const& ev : s.waveQueue) {
             sendInput(p, idx, ev.first, false);
@@ -350,9 +472,51 @@ class $modify(BufferLayer, GJBaseGameLayer) {
         s.waveQueue.clear();
     }
 
+    // Remembers the last orb each icon overlapped and when it left it.
+    void trackRings(PlayerObject* p, PState& s) {
+        int step = m_fields->step;
+        if (ringsTouching(p) > 0) {
+            if (auto ring = firstRing(p)) {
+                s.lastRing = ring;
+                // Holding into an orb uses it.
+                if (s.held) s.usedRing = ring;
+            }
+            s.touchingRing = true;
+        } else if (s.touchingRing) {
+            s.touchingRing = false;
+            s.ringLeftStep = step;
+        }
+    }
+
+    // Fires an orb the icon already left, for a click that came just too late.
+    void fireLateRing(PlayerObject* p, PState& s, int idx) {
+        Ref<RingObject> ring = s.lateRing;
+        s.lateRing = nullptr;
+        if (!ring) return;
+
+        auto yVel = p->m_yVelocity;
+        auto upside = p->m_isUpsideDown;
+        auto dashing = p->m_isDashing;
+        p->ringJump(ring, true);
+        bool worked = p->m_yVelocity != yVel || p->m_isUpsideDown != upside || p->m_isDashing != dashing;
+
+        auto f = m_fields.operator->();
+        if (worked) {
+            f->savedLate++;
+            f->totalSaved++;
+            flash({255, 160, 40});
+            DBG("[InputBuffer] {} LATE ORB fired at step {} ({} steps after leaving it) [{}]",
+                idx == 0 ? "P1" : "P2", f->step, f->step - s.ringLeftStep, modeName(p));
+        } else {
+            DBG("[InputBuffer] {} late orb rescue had no effect at step {}", idx == 0 ? "P1" : "P2", f->step);
+        }
+    }
+
     void stepPlayer(PlayerObject* p, PState& s, int idx) {
         int step = m_fields->step;
         char const* tag = idx == 0 ? "P1" : "P2";
+
+        if (s.lateRing) fireLateRing(p, s, idx);
 
         if (!s.waveQueue.empty()) {
             if (!p->m_isDart) {
@@ -419,9 +583,14 @@ class $modify(BufferLayer, GJBaseGameLayer) {
             } else {
                 sendInput(p, idx, true, true);
                 s.releaseNext = true;
-                log::info("[InputBuffer] *** SAVED +{:.1f} TICKS ({:.2f} frames @ 60fps) PRESS! [{} {} {}] (Step0: {} -> Delayed: {}) [Limit: {} steps] ***",
-                          ticksSaved, ticksSaved / 4.0f, tag, modeName(p), what,
-                          s.pendingStart, step, limit);
+                if (onRing) s.usedRing = firstRing(p);
+                auto f = m_fields.operator->();
+                f->savedEarly++;
+                f->totalSaved++;
+                flash({80, 255, 80});
+                DBG("[InputBuffer] *** SAVED +{:.1f} TICKS ({:.2f} frames @ 60fps) PRESS! [{} {} {}] (Step0: {} -> Delayed: {}) [Limit: {} steps] ***",
+                    ticksSaved, ticksSaved / 4.0f, tag, modeName(p), what,
+                    s.pendingStart, step, limit);
             }
         }
     }
@@ -472,6 +641,7 @@ class $modify(BufferLayer, GJBaseGameLayer) {
 
             s.held = down;
             s.waveQueue.emplace_back(down, target);
+            if (target != step) m_fields->adjusted++;
             DBG("[InputBuffer] {} WAVE {} {} queued at step {} -> {} ({} steps)",
                 tag, waveModeName(), down ? "PRESS" : "RELEASE", step, target, n);
             return true;
@@ -489,6 +659,7 @@ class $modify(BufferLayer, GJBaseGameLayer) {
             if (minHold > 0 && heldFor < minHold) {
                 s.delayedRelease = true;
                 s.releaseAt = s.pressStep + minHold;
+                m_fields->adjusted++;
                 DBG("[InputBuffer] {} MIN-HOLD delaying release: held {} < {} steps [{}]",
                     tag, heldFor, minHold, modeName(p));
                 return true;
@@ -499,6 +670,26 @@ class $modify(BufferLayer, GJBaseGameLayer) {
 
         if (down) {
             s.pressStep = isFlyMode(p) ? step : -1;
+
+            // A press while overlapping an orb is spent on that orb.
+            if (auto ring = firstRing(p)) s.usedRing = ring;
+
+            // Late orb: the icon left an orb it never used a moment ago.
+            // The press still goes through normally; the orb is fired on
+            // the next step, after the game has processed the press.
+            int lateLimit = lateOrbSteps();
+            if (lateLimit > 0 && !p->m_isDart && !p->m_isOnGround &&
+                ringsTouching(p) == 0 && !s.touchingRing && s.lastRing &&
+                s.ringLeftStep >= 0 && step - s.ringLeftStep <= lateLimit &&
+                s.lastRing.data() != s.usedRing.data() &&
+                !s.lastRing->hasBeenActivatedByPlayer(p)) {
+                s.lateRing = s.lastRing.data();
+                s.lastRing = nullptr;
+                s.pending = false;
+                DBG("[InputBuffer] {} late click {} steps after orb, queuing rescue [{}]",
+                    tag, step - s.ringLeftStep, modeName(p));
+                return false;
+            }
 
             bool early = isGroundMode(p) && !p->m_isOnGround && ringsTouching(p) == 0;
             if (early && modeLimitSteps(p) > 0) {
@@ -512,28 +703,78 @@ class $modify(BufferLayer, GJBaseGameLayer) {
         return false;
     }
 
+    // Small label in the bottom-left corner of the level, so recordings
+    // show whether the buffer is on and how many clicks it changed.
+    void updateOverlay() {
+        auto f = m_fields.operator->();
+        auto pl = typeinfo_cast<PlayLayer*>(static_cast<GJBaseGameLayer*>(this));
+        if (!pl) return;
+
+        if (!g_showOverlay) {
+            if (f->label) f->label->setVisible(false);
+            return;
+        }
+
+        if (!f->label) {
+            auto label = CCLabelBMFont::create("", "bigFont.fnt");
+            label->setAnchorPoint({0.f, 0.f});
+            label->setScale(0.28f);
+            label->setOpacity(210);
+            label->setPosition({5.f, 5.f});
+            label->setID("buffer-overlay"_spr);
+            pl->addChild(label, 10000);
+            f->label = label;
+        }
+        f->label->setVisible(true);
+
+        std::string text;
+        if (!assistActive()) {
+            text = g_practiceOnly && !m_isPracticeMode ? "Buffer OFF (practice mode only)" : "Buffer OFF";
+        } else {
+            text = fmt::format(
+                "Buffer {} | Late orb {}t | Wave {} | TPS {}\n"
+                "Saved this attempt: {} early, {} late | Adjusted: {} | Level total: {}",
+                STAGE_NAMES[g_stage], g_lateOrbTicks, waveModeName(), tpsLabel(),
+                f->savedEarly, f->savedLate, f->adjusted, f->totalSaved
+            );
+        }
+        if (text != f->labelText) {
+            f->label->setString(text.c_str());
+            f->labelText = text;
+        }
+
+        bool flashing = f->step < f->flashUntil;
+        f->label->setColor(flashing ? f->flashColor : ccColor3B{255, 255, 255});
+    }
+
     void processCommands(float dt, bool isHalfTick, bool isLastTick) {
         auto f = m_fields.operator->();
         f->step++;
+        observeStepDt(dt);
         pollKeys();
         syncState();
 
         GJBaseGameLayer::processCommands(dt, isHalfTick, isLastTick);
 
-        if (!PlayLayer::get()) {
-            for (auto& s : f->ps) s = PState();
+        if (!assistActive()) {
+            drainAll();
+            updateOverlay();
             return;
         }
 
         if (m_player1) stepPlayer(m_player1, f->ps[0], 0);
         if (m_player2) stepPlayer(m_player2, f->ps[1], 1);
+        if (m_player1) trackRings(m_player1, f->ps[0]);
+        if (m_player2) trackRings(m_player2, f->ps[1]);
+
+        updateOverlay();
     }
 
     void handleButton(bool down, int button, bool isPlayer1) {
         auto f = m_fields.operator->();
         syncState();
 
-        if (PlayLayer::get() && button == 1) {
+        if (button == 1 && assistActive()) {
             int idx = isPlayer1 ? 0 : 1;
             auto p = isPlayer1 ? m_player1 : m_player2;
             if (p) {
