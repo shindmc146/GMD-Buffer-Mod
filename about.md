@@ -1,27 +1,29 @@
 ## Input Buffer
 
-Makes tight timings easier by fixing clicks that are slightly too early, or slightly too late for an orb.
+An input assist that fixes clicks that are slightly too early, slightly too late, or would crash.
 
 ## What it does
 
-- **Cube, Ball, Robot, Spider:** tap slightly before landing or before an orb, release, and the click fires the moment you touch the surface or ring.
-- **Late orb rescue:** click just after passing an orb you didn't use and the orb still fires.
-- **Ship, UFO, Swing:** very short taps are stretched to a minimum length so quick inputs come out consistent.
-- **Wave:** choose between three styles: Min Hold, Min Gap or Grid snap.
-- **2 Player:** both icons are buffered using the same rules.
-- **Overlay:** shows the settings and counts every click the mod changed.
+- **Early clicks:** tap slightly before landing or before an orb, and the click fires the moment you touch the surface or ring (cube, ball, robot, spider). Ball and spider also count a click you're still holding.
+- **Late orb:** click just after passing an orb you didn't use, and the orb still fires.
+- **Late jump:** click just after running off a ledge, and you still jump, flip or teleport.
+- **Flying modes:** very short ship, UFO and swing taps are evened out; wave has Min Hold, Min Gap and Grid styles.
+- **Lookahead (experimental):** simulates the next moments to shift, block or (optionally) make clicks so you don't crash.
+- **Overlay:** shows the settings and counts every click the mod changed, with a color flash for each kind.
 
 By default it only works in **practice mode**.
 
-## Settings
+## Hotkeys
 
-Open them from Geode's mod list, or press the **Buffer** button on the pause menu. Hotkeys while in a level (only when the game window is focused):
+Only while the game window is focused:
 
+- **F5** whole mod on/off
 - **F6** cycle the buffer window
 - **F7 / F8** TPS up / down
 - **F9** debug logging
-- **F10** wave mode
+- **F10** wave style
+- **F11** Lookahead on/off
 
 ## Note
 
-This is an input assist. Use it for practice and fun, not for leaderboard or submitted runs.
+This is an input assist. Use it for practice and testing, not for leaderboard or submitted runs.

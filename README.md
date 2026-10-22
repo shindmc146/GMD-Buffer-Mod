@@ -2,47 +2,54 @@
 
 A Geode mod for Geometry Dash 2.2081 (Windows) that makes tight timings easier.
 
-If you click slightly too early, the mod remembers the click and fires it the moment you land or touch an orb. In ship, UFO, swing and wave it makes very quick taps come out consistent.
+It fixes clicks that are slightly too early, slightly too late, or that would crash, and shows on screen every click it changed.
 
-> **Note:** this is an input assist. Use it for practice and fun, not for leaderboard or submitted runs.
+> **Note:** this is an input assist. Use it for practice and testing, not for leaderboard or submitted runs. By default it only works in practice mode.
 
 ## What it does
 
-| Mode | Behavior |
+| Feature | Behavior |
 |---|---|
-| Cube, Ball, Robot, Spider | Tap a little before landing or touching an orb, let go, and the click fires when you touch the surface or ring. Clicks you are still holding are left to the normal game behavior. |
+| Early buffer (cube, ball, robot, spider) | Tap a little before landing or touching an orb and the click fires when you touch the surface or ring. Ball and spider also count a click you're still holding. |
+| Late orb | Click just after passing an orb you didn't use and the orb still fires, from where you are now. |
+| Late jump (coyote time) | Click just after running off a ledge and you still jump (cube, robot), flip (ball) or teleport (spider). |
 | Ship, UFO, Swing | A very short tap is stretched to a minimum length, so fast taps are all the same length. |
-| Wave | Three styles: **Min Hold**, **Min Gap** and **Grid**. See below. |
+| Wave | Three styles: **Min Hold**, **Min Gap** and **Grid**. |
+| Lookahead (experimental) | Simulates the next moments with the game's own physics and shifts, blocks or (optionally) makes clicks so you don't crash. |
 | 2 Player | Both icons are buffered with the same rules, each by its own mode. |
 
-Pads fire on touch in the normal game, so they need no buffering.
+### Lookahead
 
-### Wave modes
+Lookahead runs invisible copies of your icon a fraction of a second ahead through the game's physics and collision code. While a copy runs, everything it could change in the level (orbs, pads, portals, triggers, coins, effects, stats) is intercepted.
 
-- **Min Hold:** a very short tap is stretched to at least the window length. Quick taps feel slightly longer than you pressed.
-- **Min Gap:** after you let go, the next press must wait a minimum time. A press that comes too soon is delayed, which can feel like a late click.
-- **Grid:** every press and release waits for the next beat of a fixed timing grid. Most consistent, but adds a small delay to every input.
+- **Smart Shift:** a click (or a ship, wave or robot release) that would crash is delayed to the first moment within the shift window that survives.
+- **Death Guard:** if no shift helps but not clicking survives, the click is ignored. In ship, wave and robot your input is held back until it becomes safe.
+- **Auto Save:** if what you are doing now would crash and the opposite input survives, the mod clicks or lets go for you. Off by default.
 
-Switching wave mode in the middle of a wave section can cause one odd click, so change it while paused.
+It stops predicting at orbs, pads and portals, because the path after them depends on what you do there. Near those it doesn't interfere. When Lookahead is on, it replaces the flying-mode styles (minimum hold and wave styles).
+
+It costs CPU; the overlay shows the simulated steps per second. Lower **Jump Lookahead** or **Flying Lookahead** if the game stutters.
+
+### Overlay colors
+
+| Color | Meaning |
+|---|---|
+| Green | Early click saved |
+| Orange | Late orb rescued |
+| Cyan | Late jump off a ledge |
+| Yellow | Click shifted by Lookahead |
+| Red | Click blocked by Lookahead |
+| Purple | Auto Save |
 
 ## Install
 
 1. You need Geometry Dash 2.2081 on Windows with the [Geode](https://geode-sdk.org) loader installed.
-2. Download `lyophi.buffermod.geode` from the [Releases](../../releases) page.
-3. Put it in the `geode/mods` folder inside your Geometry Dash folder, then restart the game.
-
-The mod appears as **Input Buffer** in the Geode mod list.
+2. Build the mod with the included GitHub Actions workflow (Actions tab, **Build Geode Mod**, download **Build Output**), or download a release.
+3. Put `lyophi.buffermod.geode` in the `geode/mods` folder inside your Geometry Dash folder, then restart the game.
 
 ## Settings
 
-Open them from the Geode mod list, or press the **Buffer** button on the pause menu.
-
-- **Main Buffer Window:** the default window (2, 4, 8 or 16 ticks, or Off).
-- **Per-mode windows:** every mode has its own window in ticks. `-1` uses the main window, `0` turns that mode off, and `1` or more is your own value. Wave is capped at 8 ticks when set to `-1`.
-- **Wave Mode:** Min Hold, Min Gap or Grid.
-- **Game Speed (TPS):** **must match the TPS you actually run** (for example the value you set in Mega Hack). The mod uses it to turn ticks into real time. It does not change your game speed.
-- **Hotkeys:** each one can be rebound to F1 to F12, Insert, Delete, Home, End, Page Up, Page Down, or None.
-- **Debug Logging:** prints detailed events to the console.
+Open them from the Geode mod list, or press the **Buffer** button on the pause menu. Every setting has an explanation in the game.
 
 ### About ticks
 
@@ -54,24 +61,25 @@ A tick is 1/240 of a second (about 4 ms):
 | 4 | 17 ms, 1 frame at 60 FPS |
 | 8 | 33 ms, 2 frames |
 | 16 | 67 ms, 4 frames |
-
-Smaller windows feel more natural. Larger windows are more forgiving but can fire clicks earlier or later than you meant.
+| 32 | 133 ms, 8 frames |
 
 ### Default hotkeys
 
+Hotkeys only react while the Geometry Dash window is focused.
+
 | Key | Action |
 |---|---|
+| F5 | Whole mod on/off |
 | F6 | Cycle the main window |
 | F7 / F8 | TPS up / down |
 | F9 | Toggle debug logging |
-| F10 | Cycle wave mode |
-
-Hotkeys are Windows-only and are read even when the game window is not focused.
+| F10 | Cycle wave style |
+| F11 | Lookahead on/off |
 
 ## Known limitations
 
 - Windows only.
-- The TPS setting is entered by hand and must be kept in sync with your real TPS.
+- Lookahead and the late assists use game internals that were checked against the game's bindings but could not be play-tested before release. Each one reports whether it worked in the overlay counters and in the debug log.
 - Delayed inputs are injected by the mod, so effects that depend on the original input event may not see them at the exact moment.
 - Other input mods (for example Click Between Frames) can interact with this one. If something feels off, test with the other mod disabled.
 
@@ -85,6 +93,13 @@ geode build
 ```
 
 The packaged `.geode` file is produced in the `build` folder.
+
+The timing rules in `src/Logic.hpp` have unit tests that need no game or SDK:
+
+```
+cd tests
+g++ -std=c++20 -I../src logic_test.cpp -o logic_test && ./logic_test
+```
 
 ## License
 

@@ -1,3 +1,16 @@
+## v2.0.0
+- **Late jumps (coyote time):** run off a ledge and click just after, and you still jump (cube, robot), flip (ball) or teleport (spider). New setting: Late Jump Window, default 4 ticks.
+- **Re-press held clicks:** ball and spider now count an early click you're still holding when you land.
+- **Lookahead (experimental, off by default):** simulates the next moments with the game's own physics on invisible copies of your icon.
+  - **Smart Shift** delays a click (or a ship, wave or robot release) that would crash to the first moment that survives.
+  - **Death Guard** ignores clicks that would crash when not clicking is safe; in ship, wave and robot it holds your input back until it's safe.
+  - **Auto Save** clicks or lets go for you when your current input would crash.
+  - It stops predicting at orbs, pads and portals, so it never fights them.
+- **Master switch** (F5) and **Lookahead switch** (F11), each with a small popup.
+- Overlay shows every kind of rescue with its own color and counter, plus how much work Lookahead is doing.
+- Auto TPS now reads the real physics step (works with Click Between Frames and time warps).
+- Code split into smaller files, with unit tests for the timing rules (`tests/`).
+
 ## v1.1.0
 - **Late orb rescue:** if you pass an orb without using it and click within the Late Orb Window (default 4 ticks), the orb fires anyway. Set it to 0 to turn it off.
 - **Overlay:** a label in the bottom-left corner shows the current settings and counts every click the mod changed this attempt (early saves, late orb rescues, adjusted flying/wave inputs) plus a level total. It flashes green on an early save and orange on a late rescue. Can be turned off in settings.
