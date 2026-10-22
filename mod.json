@@ -5,9 +5,9 @@
     },
     "id": "lyophi.buffermod",
     "name": "Input Buffer",
-    "version": "v1.0.2",
+    "version": "v1.1.0",
     "developer": "Lyophi",
-    "description": "Predictive input buffering for Geometry Dash. Early clicks are remembered and fired when you land or touch an orb, and ship, UFO, swing and wave get smoother, more consistent timing.",
+    "description": "Predictive input buffering for Geometry Dash. Early clicks are remembered and fired when you land or touch an orb, late clicks can still use an orb you just passed, and ship, UFO, swing and wave get smoother timing. Shows an on-screen counter of every click it changed.",
     "settings": {
         "guide": {
             "type": "title",
@@ -17,9 +17,16 @@
         "stage": {
             "type": "string",
             "name": "Main Buffer Window",
-            "description": "The default window for every mode that is set to -1 below.\n\n**2 ticks** = about half a frame (very strict)\n**4 ticks** = about 1 frame (a good starting point)\n**8 ticks** = about 2 frames\n**16 ticks** = about 4 frames (very forgiving)\n**Off** = no default window\n\nA bigger window is more forgiving, but a click meant for later might fire sooner than you wanted.",
+            "description": "The default window for every mode that is set to -1 below.\n\n**2 ticks** = about half a frame (very strict)\n**4 ticks** = about 1 frame (a good starting point)\n**8 ticks** = about 2 frames\n**16 ticks** = about 4 frames (very forgiving)\n**32 ticks** = about 8 frames (extreme)\n**Off** = no default window\n\nA bigger window is more forgiving, but a click meant for later might fire sooner than you wanted.",
             "default": "4 ticks",
-            "one-of": ["2 ticks", "4 ticks", "8 ticks", "16 ticks", "Off"]
+            "one-of": [
+                "2 ticks",
+                "4 ticks",
+                "8 ticks",
+                "16 ticks",
+                "32 ticks",
+                "Off"
+            ]
         },
         "sec-ground": {
             "type": "title",
@@ -33,7 +40,11 @@
             "default": -1,
             "min": -1,
             "max": 64,
-            "control": { "input": true, "arrows": true, "slider": false }
+            "control": {
+                "input": true,
+                "arrows": true,
+                "slider": false
+            }
         },
         "ball-ticks": {
             "type": "int",
@@ -42,7 +53,11 @@
             "default": -1,
             "min": -1,
             "max": 64,
-            "control": { "input": true, "arrows": true, "slider": false }
+            "control": {
+                "input": true,
+                "arrows": true,
+                "slider": false
+            }
         },
         "robot-ticks": {
             "type": "int",
@@ -51,7 +66,11 @@
             "default": -1,
             "min": -1,
             "max": 64,
-            "control": { "input": true, "arrows": true, "slider": false }
+            "control": {
+                "input": true,
+                "arrows": true,
+                "slider": false
+            }
         },
         "spider-ticks": {
             "type": "int",
@@ -60,7 +79,11 @@
             "default": -1,
             "min": -1,
             "max": 64,
-            "control": { "input": true, "arrows": true, "slider": false }
+            "control": {
+                "input": true,
+                "arrows": true,
+                "slider": false
+            }
         },
         "sec-fly": {
             "type": "title",
@@ -74,7 +97,11 @@
             "default": -1,
             "min": -1,
             "max": 64,
-            "control": { "input": true, "arrows": true, "slider": false }
+            "control": {
+                "input": true,
+                "arrows": true,
+                "slider": false
+            }
         },
         "ufo-ticks": {
             "type": "int",
@@ -83,7 +110,11 @@
             "default": -1,
             "min": -1,
             "max": 64,
-            "control": { "input": true, "arrows": true, "slider": false }
+            "control": {
+                "input": true,
+                "arrows": true,
+                "slider": false
+            }
         },
         "swing-ticks": {
             "type": "int",
@@ -92,7 +123,11 @@
             "default": -1,
             "min": -1,
             "max": 64,
-            "control": { "input": true, "arrows": true, "slider": false }
+            "control": {
+                "input": true,
+                "arrows": true,
+                "slider": false
+            }
         },
         "wave-ticks": {
             "type": "int",
@@ -101,54 +136,180 @@
             "default": -1,
             "min": -1,
             "max": 64,
-            "control": { "input": true, "arrows": true, "slider": false }
+            "control": {
+                "input": true,
+                "arrows": true,
+                "slider": false
+            }
         },
         "wave-mode": {
             "type": "string",
             "name": "Wave Mode",
             "description": "Picks how the wave timing help works. The Wave Window above sets how strong it is.\n\n**Min Hold**: a very short tap is stretched to at least the window length. Good if your quick taps come out too short or uneven.\nWatch out: quick taps feel slightly longer than you pressed, and fast spam can feel sticky.\n\n**Min Gap**: after you let go, the next press has to wait a minimum time. Good for fast zigzags that bunch up.\nWatch out: a press that comes too soon is delayed, which can feel like a late or skipped click.\n\n**Grid**: every press and release waits for the next beat of a fixed timing grid, so everything lines up evenly. Gives the most consistent result.\nWatch out: adds a small delay to every click and release, up to the window size. It can feel laggy with large windows.\n\nSwitching modes in the middle of a wave section can cause one odd click, so change it while paused.",
             "default": "Grid",
-            "one-of": ["Min Hold", "Min Gap", "Grid"]
+            "one-of": [
+                "Min Hold",
+                "Min Gap",
+                "Grid"
+            ]
+        },
+        "sec-late": {
+            "type": "title",
+            "name": "Late orb rescue",
+            "description": "The other buffers help when you click **too early**. This one helps when you click **too late**: if you pass an orb without using it and click within this window, the mod fires that orb anyway, at the spot where you are now.\n\nIt does not apply to wave, or when you are standing on the ground."
+        },
+        "late-orb-ticks": {
+            "type": "int",
+            "name": "Late Orb Window (ticks)",
+            "description": "How long after leaving an unused orb a click still fires it.\n\n**0** = off\n**4** = about 1 frame late (default)\n**8** = about 2 frames late\n**16** = about 4 frames late\n\nBig values can fire an orb you meant to skip, if you click soon after it for something else.",
+            "default": 4,
+            "min": 0,
+            "max": 32,
+            "control": {
+                "input": true,
+                "arrows": true,
+                "slider": false
+            }
         },
         "sec-keys": {
             "type": "title",
             "name": "Hotkeys",
-            "description": "Keys that work while you are in a level. Pick **None** to disable one. If two actions share a key, both will trigger."
+            "description": "Keys that work while you are in a level. Pick **None** to disable one. If two actions share a key, both will trigger. Hotkeys only work while the Geometry Dash window is focused."
         },
         "key-stage": {
             "type": "string",
             "name": "Key: Cycle Main Window",
-            "description": "Steps the Main Buffer Window through 2, 4, 8, 16 ticks and Off.",
+            "description": "Steps the Main Buffer Window through 2, 4, 8, 16, 32 ticks and Off.",
             "default": "F6",
-            "one-of": ["None","F1","F2","F3","F4","F5","F6","F7","F8","F9","F10","F11","F12","Insert","Delete","Home","End","Page Up","Page Down"]
+            "one-of": [
+                "None",
+                "F1",
+                "F2",
+                "F3",
+                "F4",
+                "F5",
+                "F6",
+                "F7",
+                "F8",
+                "F9",
+                "F10",
+                "F11",
+                "F12",
+                "Insert",
+                "Delete",
+                "Home",
+                "End",
+                "Page Up",
+                "Page Down"
+            ]
         },
         "key-tps-up": {
             "type": "string",
             "name": "Key: TPS Up",
-            "description": "Moves the Game Speed (TPS) setting up one preset. Remember it must match your real TPS.",
+            "description": "Moves the Game Speed (TPS) setting up one preset (Auto, then 60, 120, 240...). Remember it must match your real TPS.",
             "default": "F7",
-            "one-of": ["None","F1","F2","F3","F4","F5","F6","F7","F8","F9","F10","F11","F12","Insert","Delete","Home","End","Page Up","Page Down"]
+            "one-of": [
+                "None",
+                "F1",
+                "F2",
+                "F3",
+                "F4",
+                "F5",
+                "F6",
+                "F7",
+                "F8",
+                "F9",
+                "F10",
+                "F11",
+                "F12",
+                "Insert",
+                "Delete",
+                "Home",
+                "End",
+                "Page Up",
+                "Page Down"
+            ]
         },
         "key-tps-down": {
             "type": "string",
             "name": "Key: TPS Down",
-            "description": "Moves the Game Speed (TPS) setting down one preset.",
+            "description": "Moves the Game Speed (TPS) setting down one preset. Going below 60 switches back to Auto.",
             "default": "F8",
-            "one-of": ["None","F1","F2","F3","F4","F5","F6","F7","F8","F9","F10","F11","F12","Insert","Delete","Home","End","Page Up","Page Down"]
+            "one-of": [
+                "None",
+                "F1",
+                "F2",
+                "F3",
+                "F4",
+                "F5",
+                "F6",
+                "F7",
+                "F8",
+                "F9",
+                "F10",
+                "F11",
+                "F12",
+                "Insert",
+                "Delete",
+                "Home",
+                "End",
+                "Page Up",
+                "Page Down"
+            ]
         },
         "key-debug": {
             "type": "string",
             "name": "Key: Debug Logging",
             "description": "Turns debug logging on or off.",
             "default": "F9",
-            "one-of": ["None","F1","F2","F3","F4","F5","F6","F7","F8","F9","F10","F11","F12","Insert","Delete","Home","End","Page Up","Page Down"]
+            "one-of": [
+                "None",
+                "F1",
+                "F2",
+                "F3",
+                "F4",
+                "F5",
+                "F6",
+                "F7",
+                "F8",
+                "F9",
+                "F10",
+                "F11",
+                "F12",
+                "Insert",
+                "Delete",
+                "Home",
+                "End",
+                "Page Up",
+                "Page Down"
+            ]
         },
         "key-wave": {
             "type": "string",
             "name": "Key: Cycle Wave Mode",
             "description": "Switches between Min Hold, Min Gap and Grid. Best used while paused.",
             "default": "F10",
-            "one-of": ["None","F1","F2","F3","F4","F5","F6","F7","F8","F9","F10","F11","F12","Insert","Delete","Home","End","Page Up","Page Down"]
+            "one-of": [
+                "None",
+                "F1",
+                "F2",
+                "F3",
+                "F4",
+                "F5",
+                "F6",
+                "F7",
+                "F8",
+                "F9",
+                "F10",
+                "F11",
+                "F12",
+                "Insert",
+                "Delete",
+                "Home",
+                "End",
+                "Page Up",
+                "Page Down"
+            ]
         },
         "sec-general": {
             "type": "title",
@@ -158,9 +319,31 @@
         "tps": {
             "type": "string",
             "name": "Game Speed (TPS)",
-            "description": "Must match the TPS you set in Mega Hack, or 240 if you have not changed it.\n\nThe mod uses this to turn ticks into real time. If it is wrong, every window will be the wrong size: too short if you set it lower than your real TPS, too long if you set it higher.\n\nThis does not change your game's speed. It only tells the mod what speed you are running.",
-            "default": "240",
-            "one-of": ["60", "120", "240", "360", "480", "720", "960", "1000"]
+            "description": "**Auto** (recommended) reads the speed from the game itself. The overlay shows the value it found; on an unmodified game it should say **240 auto**. If it shows something else, pick your real TPS here instead.\n\nOtherwise this must match the TPS you set in Mega Hack, or 240 if you have not changed it.\n\nThe mod uses this to turn ticks into real time. It does not change your game's speed.",
+            "default": "Auto",
+            "one-of": [
+                "Auto",
+                "60",
+                "120",
+                "240",
+                "360",
+                "480",
+                "720",
+                "960",
+                "1000"
+            ]
+        },
+        "practice-only": {
+            "type": "bool",
+            "name": "Practice Mode Only",
+            "description": "When on, the buffer only works while practice mode is on. In normal mode every click goes straight to the game, so you can't upload a completion or progress with the buffer helping by accident.\n\nTurn it off only for unrated or offline levels.",
+            "default": true
+        },
+        "show-overlay": {
+            "type": "bool",
+            "name": "Show Overlay",
+            "description": "Shows a small label in the bottom-left corner with the buffer settings and how many clicks it changed this attempt. It flashes **green** when an early click is saved and **orange** when a late orb is rescued.\n\n**Early** = early clicks fired on landing or orb contact.\n**Late** = orbs fired after you already left them.\n**Adjusted** = flying and wave inputs whose timing was changed.\n**Level total** = all saved clicks since you opened the level.",
+            "default": true
         },
         "debug": {
             "type": "bool",
